@@ -7,6 +7,7 @@ from notion_backend import (
     create_assignment,
     update_assignment
 )
+import os
 
 app = Flask(__name__)
 
@@ -73,11 +74,14 @@ def chat():
 
     COURSE_ALIASES = {
         "precalc": "Precalculus",
+        "precalculus": "Precalculus",
         "math": "Precalculus",
         "comp sci": "AP Computer Science",
         "cs": "AP Computer Science",
         "bio": "Biology",
+        "biology": "Biology",
         "chem": "Chemistry",
+        "chemistry": "Chemistry",
         "spanish": "Spanish",
         "history": "US History",
         "us history": "US History"
@@ -96,7 +100,13 @@ def chat():
     elif any(kw in message for kw in ["add", "assignment", "quiz", "test", "project", "essay", "homework"]):
         parsed = parse_add_command(message)
         course_name = parsed.get("Course")
-        normalized_course = COURSE_ALIASES.get(course_name.lower(), course_name) if course_name else None
+
+        normalized_course = None
+        if course_name:
+            normalized_course = COURSE_ALIASES.get(course_name.lower(), course_name)
+
+        print("Parsed:", parsed)
+        print("Normalized course:", normalized_course)
 
         if normalized_course:
             course_id, matched_course = find_course_id(normalized_course)
@@ -121,8 +131,6 @@ def chat():
         response = "🤖 Sorry, I didn’t understand that command."
 
     return jsonify({"response": response})
-
-import os
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
