@@ -121,7 +121,7 @@ def chat():
             if isinstance(course_id, str):
                 create_assignment(
                     parsed["Name"],
-                    course_id,
+                    course_id, # ✅ just the string, not a list
                     parsed.get("Due date"),
                     parsed.get("Type")
                 )
