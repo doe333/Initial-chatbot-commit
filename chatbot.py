@@ -111,9 +111,10 @@ def chat():
         if normalized_course:
             course_id, matched_course = find_course_id(normalized_course)
             if course_id:
+                print("Using course ID:", course_id)  # ✅ Debug print
                 create_assignment(
                     parsed["Name"],
-                    course_id,
+                    course_id,  # ✅ Pass only the string ID
                     parsed.get("Due date"),
                     parsed.get("Type")
                 )
