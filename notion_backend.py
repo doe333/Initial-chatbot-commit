@@ -5,11 +5,7 @@ import dateparser
 from dotenv import load_dotenv
 import parsedatetime
 import difflib
-
-
-
-# Load token from .env file
-load_dotenv()
+import os
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 
 # Database IDs
