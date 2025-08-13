@@ -109,12 +109,19 @@ def chat():
         print("Normalized course:", normalized_course)
 
         if normalized_course:
-            course_id, matched_course = find_course_id(normalized_course)
-            if course_id:
-                print("Using course ID:", course_id)  # ✅ Debug print
+            result = find_course_id(normalized_course)
+            if isinstance(result, tuple):
+                course_id, matched_course = result
+            else:
+                course_id, matched_course = result[0], result[1]
+
+            print("Using course ID:", course_id)
+            print("Type of course_id:", type(course_id))
+
+            if isinstance(course_id, str):
                 create_assignment(
                     parsed["Name"],
-                    course_id,  # ✅ Pass only the string ID
+                    course_id,
                     parsed.get("Due date"),
                     parsed.get("Type")
                 )
@@ -122,8 +129,7 @@ def chat():
                 if parsed.get("Type"):
                     response += f" as a '{parsed['Type']}'"
             else:
-                valid_courses = sorted(set(COURSE_ALIASES.values()))
-                response = f"❌ Could not find a course similar to '{course_name}'. Try one of: {', '.join(valid_courses)}"
+                response = f"❌ Invalid course ID format: {course_id}"
         else:
             valid_courses = sorted(set(COURSE_ALIASES.values()))
             response = f"❌ Could not find course name in your command. Try one of: {', '.join(valid_courses)}"
