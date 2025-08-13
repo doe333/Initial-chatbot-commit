@@ -225,7 +225,7 @@ def create_assignment(name, course_id, due_date=None, type_name=None):
             "title": [{"type": "text", "text": {"content": name}}]
         },
         "Course": {
-            "relation": [{"id": course_id}]
+            "relation": [{"id": course_id}]  # ✅ Only the ID, not a list
         },
         "Status": {
             "status": {"name": "Not started"}
@@ -240,6 +240,11 @@ def create_assignment(name, course_id, due_date=None, type_name=None):
         properties["Type"] = {
             "select": {"name": type_name}
         }
+    if due_date:
+        properties["Due date"] = {
+            "date": {"start": due_date}
+        }
+
     payload = {
         "parent": {"database_id": DATABASE_ID},
         "properties": properties
@@ -251,7 +256,7 @@ def create_assignment(name, course_id, due_date=None, type_name=None):
     else:
         print(f"❌ Failed to create assignment: {response.text}")
 
-# 🔍 Query assignments due today
+
 get_assignments(filter_by="due-today", filter_value=True)
 
 # ✍️ Update one assignment manually
