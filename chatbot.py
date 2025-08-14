@@ -1,140 +1,87 @@
-from flask import Flask, request, jsonify, render_template_string
 from notion_backend import (
+    create_assignment,
+    update_assignment,
     parse_add_command,
     parse_status_command,
     find_course_id,
     find_assignment_id_by_name,
-    create_assignment,
-    update_assignment
+    COURSE_ALIASES
 )
-import os
 
-app = Flask(__name__)
+def handle_add_command(command):
+    parsed = parse_add_command(command)
+    print("\n🧠 Parsed Add Command:")
+    print(parsed)
 
-HTML_TEMPLATE = """
-<!doctype html>
-<html>
-<head>
-  <title>Assignment Chatbot</title>
-  <style>
-    body { font-family: sans-serif; padding: 20px; }
-    #chatbox { width: 100%; max-width: 600px; margin: auto; }
-    .message { margin: 10px 0; }
-    .user { color: blue; }
-    .bot { color: green; }
-  </style>
-</head>
-<body>
-  <div id="chatbox">
-    <h2>🧠 Assignment Chatbot</h2>
-    <div id="messages"></div>
-    <form id="chatForm">
-      <input type="text" id="messageInput" placeholder="Type your command..." style="width: 80%;">
-      <button type="submit">Send</button>
-    </form>
-  </div>
-  <script>
-    const form = document.getElementById("chatForm");
-    const input = document.getElementById("messageInput");
-    const messages = document.getElementById("messages");
+    course_name = parsed.get("Course")
+    if not course_name:
+        return "❌ No course name found in command."
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const userMsg = input.value;
-      messages.innerHTML += `<div class='message user'>🧑‍💻 ${userMsg}</div>`;
-      input.value = "";
+    normalized_course = COURSE_ALIASES.get(course_name.lower(), course_name)
+    print("Normalized course:", normalized_course)
 
-      const res = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg })
-      });
-      const data = await res.json();
-      messages.innerHTML += `<div class='message bot'>🤖 ${data.response}</div>`;
-    });
-  </script>
-</body>
-</html>
-"""
+    course_id, matched_course = find_course_id(normalized_course)
 
-@app.route("/")
-def index():
-    return render_template_string(HTML_TEMPLATE)
+    if not course_id or not isinstance(course_id, str):
+        return f"❌ Could not find course named '{parsed['Course']}'"
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.get_json()
-    message = data.get("message", "").lower()
+    print("Using course ID:", course_id)
+    print("Type of course_id:", type(course_id))
 
-    STATUS_MAP = {
-        "done": "Completed",
-        "in progress": "In progress",
-        "not started": "Not started"
-    }
+    create_assignment(
+        parsed["Name"],
+        course_id,
+        parsed.get("Due date"),
+        parsed.get("Type")
+    )
 
-    COURSE_ALIASES = {
-        "precalc": "Precalculus",
-        "precalculus": "Precalculus",
-        "math": "Precalculus",
-        "comp sci": "AP Computer Science",
-        "cs": "AP Computer Science",
-        "bio": "Biology",
-        "biology": "Biology",
-        "chem": "Chemistry",
-        "chemistry": "Chemistry",
-        "spanish": "Spanish",
-        "history": "US History",
-        "us history": "US History"
-    }
+    response = f"✅ Created assignment '{parsed['Name']}' for course '{matched_course}' due {parsed['Due date']}"
+    if parsed.get("Type"):
+        response += f" as a '{parsed['Type']}'"
+    return response
 
-    if any(kw in message for kw in ["status", "mark", "set", "change"]):
-        parsed = parse_status_command(message)
-        parsed_status = STATUS_MAP.get(parsed["Status"].lower(), parsed["Status"].capitalize())
-        page_id, matched_name = find_assignment_id_by_name(parsed["Name"])
-        if page_id:
-            update_assignment(page_id, {"Status": parsed_status})
-            response = f"✅ Updated status of '{matched_name}' to '{parsed_status}'"
-        else:
-            response = f"❌ Could not find assignment similar to '{parsed['Name']}'"
 
-    elif any(kw in message for kw in ["add", "assignment", "quiz", "test", "project", "essay", "homework"]):
-        parsed = parse_add_command(message)
-        course_name = parsed.get("Course")
+def handle_status_command(command):
+    parsed = parse_status_command(command)
+    print("\n🧠 Parsed Status Command:")
+    print(parsed)
 
-        normalized_course = None
-        if course_name:
-            normalized_course = COURSE_ALIASES.get(course_name.lower(), course_name)
+    assignment_name = parsed.get("Name")
+    new_status = parsed.get("Status")
 
-        print("Parsed:", parsed)
-        print("Normalized course:", normalized_course)
+    if not assignment_name or not new_status:
+        return "❌ Could not parse assignment name or status."
 
-        if normalized_course:
-            result = find_course_id(normalized_course)
-            course_id, matched_course = find_course_id(normalized_course)
-            print("Using course ID:", course_id)
-            print("Type of course_id:", type(course_id))
+    assignment_id, matched_title = find_assignment_id_by_name(assignment_name)
+    if not assignment_id:
+        return f"❌ Could not find assignment named '{assignment_name}'"
 
-            if isinstance(course_id, str):
-                create_assignment(
-                    parsed["Name"],
-                    course_id, # ✅ just the string, not a list
-                    parsed.get("Due date"),
-                    parsed.get("Type")
-                )
-                response = f"✅ Created assignment '{parsed['Name']}' for course '{matched_course}' due {parsed['Due date']}"
-                if parsed.get("Type"):
-                    response += f" as a '{parsed['Type']}'"
-            else:
-                response = f"❌ Invalid course ID format: {course_id}"
-        else:
-            valid_courses = sorted(set(COURSE_ALIASES.values()))
-            response = f"❌ Could not find course name in your command. Try one of: {', '.join(valid_courses)}"
+    update_assignment(assignment_id, { "Status": new_status })
+    return f"✅ Marked '{matched_title}' as '{new_status}'"
 
+
+def handle_command(command):
+    command_lower = command.lower()
+
+    if any(kw in command_lower for kw in ["add", "create", "make"]) and "assignment" in command_lower:
+        return handle_add_command(command)
+    elif any(kw in command_lower for kw in ["mark", "set", "change", "update"]) and "as" in command_lower:
+        return handle_status_command(command)
     else:
-        response = "🤖 Sorry, I didn’t understand that command."
+        return "🤔 Sorry, I didn't understand that command. Try something like:\n- 'Add an assignment called Essay 1 for History due Friday'\n- 'Mark Essay 1 as completed'"
 
-    return jsonify({"response": response})
 
+# 🧪 Example usage
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    test_commands = [
+        "Add an assignment called Essay 1 under the class US History due August 20",
+        "Make a project called Bio Lab for bio due next Monday",
+        "Mark essay one as done",
+        "Set Essay 1 to completed",
+        "Create hw called Math Review for precalc due tomorrow"
+    ]
+
+    for cmd in test_commands:
+        print(f"\n💬 Command: {cmd}")
+        result = handle_command(cmd)
+        print(result)
