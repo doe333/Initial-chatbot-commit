@@ -110,11 +110,7 @@ def chat():
 
         if normalized_course:
             result = find_course_id(normalized_course)
-            if isinstance(result, tuple):
-                course_id, matched_course = result
-            else:
-                course_id, matched_course = result[0], result[1]
-
+            course_id, matched_course = find_course_id(normalized_course)
             print("Using course ID:", course_id)
             print("Type of course_id:", type(course_id))
 
