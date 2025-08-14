@@ -35,9 +35,9 @@ def handle_add_command(command):
         parsed.get("Type")
     )
 
-    response = f"✅ Created assignment '{parsed['Name']}' for course '{matched_course}' due {parsed['Due date']}"
-    if parsed.get("Type"):
-        response += f" as a '{parsed['Type']}'"
+    response = f"✅ Created {parsed.get('Type', 'assignment')} '{parsed['Name']}' for course '{matched_course}'"
+    if parsed.get("Due date"):
+        response += f" due {parsed['Due date']}"
     return response
 
 
@@ -63,14 +63,14 @@ def handle_status_command(command):
 def handle_command(command):
     command_lower = command.lower()
 
-    if any(kw in command_lower for kw in ["add", "create", "make"]) and "assignment" in command_lower:
+    if any(kw in command_lower for kw in ["add", "create", "make"]) and any(kw in command_lower for kw in ["assignment", "quiz", "test", "project", "hw", "lab"]):
         return handle_add_command(command)
     elif any(kw in command_lower for kw in ["mark", "set", "change", "update"]) and "as" in command_lower:
         return handle_status_command(command)
-    elif any(kw in command_lower for kw in ["essay", "project", "hw", "lab"]) and "due" in command_lower:
+    elif any(kw in command_lower for kw in ["essay", "project", "hw", "lab", "quiz", "test"]) and "due" in command_lower:
         return handle_add_command(command)
     else:
-        return "🤔 Sorry, I didn't understand that command. Try something like:\n- 'Add an assignment called Essay 1 for History due Friday'\n- 'Mark Essay 1 as completed'"
+        return "🤔 Sorry, I didn't understand that command. Try something like:\n- 'Add a quiz called Chapter 3 for bio due next Friday'\n- 'Mark Essay 1 as completed'"
 
 
 # 🧪 Example usage
@@ -81,7 +81,9 @@ if __name__ == "__main__":
         "Mark essay one as done",
         "Set Essay 1 to completed",
         "Create hw called Math Review for precalc due tomorrow",
-        "Add a lab called Cell Structure for the course Biology due Friday"
+        "Add a lab called Cell Structure for the course Biology due Friday",
+        "Add a quiz called Chapter 3 for comp sci due next Friday",
+        "Make a test called Midterm for gov due in 3 days"
     ]
 
     for cmd in test_commands:

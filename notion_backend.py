@@ -2,6 +2,7 @@ import requests
 import re
 import difflib
 from datetime import datetime
+import dateparser
 
 # 🔐 Replace with your actual Notion credentials
 DATABASE_ID = "your_notion_database_id"
@@ -29,6 +30,11 @@ COURSE_ALIASES = {
 # 🧼 Strip leading phrases from course names
 def clean_course_name(raw):
     return re.sub(r"^(the\s)?(class|course)\s+", "", raw.strip(), flags=re.IGNORECASE)
+
+# 📅 Parse fuzzy due dates
+def parse_due_date(raw):
+    parsed = dateparser.parse(raw)
+    return parsed.strftime("%Y-%m-%d") if parsed else None
 
 # 🗓️ Stub for calendar integration
 def create_calendar_event(name, due_date):
@@ -104,26 +110,28 @@ def update_assignment(page_id, updates):
 
 # 🧠 Parse natural language "add" command (fuzzy)
 def parse_add_command(command):
-    match = re.search(r"(?:add|create|make).*assignment.*called (.+?) (?:under|for|in|from) (.+?) (?:due|on|by) (.+)", command, re.IGNORECASE)
+    match = re.search(r"(?:add|create|make).*?(?:assignment|quiz|test|project|hw|lab)?(?: called)? (.+?) (?:under|for|in|from|in the class|in course)? (.+?) (?:due|on|by) (.+)", command, re.IGNORECASE)
     if match:
+        raw_type = re.search(r"(assignment|quiz|test|project|hw|lab)", command, re.IGNORECASE)
+        type_guess = raw_type.group(1).capitalize() if raw_type else "Assignment"
         return {
             "Name": match.group(1).strip(),
             "Course": clean_course_name(match.group(2).strip()),
-            "Due date": match.group(3).strip(),
-            "Type": None
+            "Due date": parse_due_date(match.group(3).strip()),
+            "Type": type_guess
         }
 
     # Fallback loose parser
-    fallback = re.search(r"(?:create|make|add)?\s*(?:an|a)?\s*(essay|project|hw|assignment)?\s*(?:called)?\s*(.+?)\s*(?:for|in|under)\s*(.+?)\s*(?:due|on|by)\s*(.+)", command, re.IGNORECASE)
+    fallback = re.search(r"(?:create|make|add)?\s*(?:an|a)?\s*(assignment|quiz|test|project|hw|lab)?\s*(?:called)?\s*(.+?)\s*(?:for|in|under)\s*(.+?)\s*(?:due|on|by)\s*(.+)", command, re.IGNORECASE)
     if fallback:
         type_guess = fallback.group(1) or "Assignment"
         name = fallback.group(2)
         course = clean_course_name(fallback.group(3))
-        due = fallback.group(4)
+        due = parse_due_date(fallback.group(4))
         return {
             "Name": name.strip(),
             "Course": course.strip(),
-            "Due date": due.strip(),
+            "Due date": due,
             "Type": type_guess.capitalize()
         }
 
@@ -150,8 +158,10 @@ def find_course_id(course_name):
     titles = {}
     for result in data.get("results", []):
         props = result["properties"]
-        title = props["Name"]["title"][0]["text"]["content"].strip() if props["Name"]["title"] else ""
-        titles[title] = result["id"]
+        title_prop = props.get("Name", {}).get("title", [])
+        if title_prop:
+            title = title_prop[0]["text"]["content"].strip()
+            titles[title] = result["id"]
 
     closest = difflib.get_close_matches(normalized, titles.keys(), n=1, cutoff=0.4)
     if closest:
