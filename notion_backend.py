@@ -26,6 +26,10 @@ COURSE_ALIASES = {
     "econ": "Economics"
 }
 
+# 🧼 Strip leading phrases from course names
+def clean_course_name(raw):
+    return re.sub(r"^(the\s)?(class|course)\s+", "", raw.strip(), flags=re.IGNORECASE)
+
 # 🗓️ Stub for calendar integration
 def create_calendar_event(name, due_date):
     return "calendar-event-id"
@@ -104,15 +108,18 @@ def parse_add_command(command):
     if match:
         return {
             "Name": match.group(1).strip(),
-            "Course": match.group(2).strip(),
+            "Course": clean_course_name(match.group(2).strip()),
             "Due date": match.group(3).strip(),
             "Type": None
         }
 
     # Fallback loose parser
-    fallback = re.findall(r"(essay|project|hw|assignment).*?(?:called )?(.+?) (?:for|in|under) (.+?) (?:due|on|by) (.+)", command, re.IGNORECASE)
+    fallback = re.search(r"(?:create|make|add)?\s*(?:an|a)?\s*(essay|project|hw|assignment)?\s*(?:called)?\s*(.+?)\s*(?:for|in|under)\s*(.+?)\s*(?:due|on|by)\s*(.+)", command, re.IGNORECASE)
     if fallback:
-        type_guess, name, course, due = fallback[0]
+        type_guess = fallback.group(1) or "Assignment"
+        name = fallback.group(2)
+        course = clean_course_name(fallback.group(3))
+        due = fallback.group(4)
         return {
             "Name": name.strip(),
             "Course": course.strip(),
@@ -124,13 +131,13 @@ def parse_add_command(command):
 
 # 🧠 Parse status update command (fuzzy)
 def parse_status_command(command):
-    name_match = re.search(r"(?:mark|set|change|update) (.+?) (?:as|to)", command)
-    status_match = re.search(r"(?:as|to) (.+)", command)
-
-    return {
-        "Name": name_match.group(1).strip() if name_match else None,
-        "Status": status_match.group(1).strip().capitalize() if status_match else None
-    }
+    name_match = re.search(r"(?:mark|set|change|update)\s+(.+?)\s+(?:as|to)\s+(.+)", command, re.IGNORECASE)
+    if name_match:
+        return {
+            "Name": name_match.group(1).strip(),
+            "Status": name_match.group(2).strip().capitalize()
+        }
+    return { "Name": None, "Status": None }
 
 # 🔎 Fuzzy match course name to Notion ID
 def find_course_id(course_name):
@@ -146,7 +153,6 @@ def find_course_id(course_name):
         title = props["Name"]["title"][0]["text"]["content"].strip() if props["Name"]["title"] else ""
         titles[title] = result["id"]
 
-    # Fuzzy match
     closest = difflib.get_close_matches(normalized, titles.keys(), n=1, cutoff=0.4)
     if closest:
         matched_title = closest[0]

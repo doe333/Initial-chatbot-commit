@@ -67,6 +67,8 @@ def handle_command(command):
         return handle_add_command(command)
     elif any(kw in command_lower for kw in ["mark", "set", "change", "update"]) and "as" in command_lower:
         return handle_status_command(command)
+    elif any(kw in command_lower for kw in ["essay", "project", "hw", "lab"]) and "due" in command_lower:
+        return handle_add_command(command)
     else:
         return "🤔 Sorry, I didn't understand that command. Try something like:\n- 'Add an assignment called Essay 1 for History due Friday'\n- 'Mark Essay 1 as completed'"
 
@@ -78,7 +80,8 @@ if __name__ == "__main__":
         "Make a project called Bio Lab for bio due next Monday",
         "Mark essay one as done",
         "Set Essay 1 to completed",
-        "Create hw called Math Review for precalc due tomorrow"
+        "Create hw called Math Review for precalc due tomorrow",
+        "Add a lab called Cell Structure for the course Biology due Friday"
     ]
 
     for cmd in test_commands:
