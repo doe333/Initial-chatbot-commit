@@ -1,214 +1,132 @@
-import requests
 import re
-import difflib
-from datetime import datetime
-import dateparser
+from difflib import get_close_matches
+from datetime import datetime, timedelta
 
-# 🔐 Replace with your actual Notion credentials
-DATABASE_ID = "your_notion_database_id"
-headers = {
-    "Authorization": "Bearer your_notion_token",
-    "Notion-Version": "2022-06-28",
-    "Content-Type": "application/json"
+# Simulated Notion database (replace with actual API calls)
+notion_courses = ["Biology", "US History", "Precalculus", "AP Computer Science", "Government"]
+notion_assignments = {
+    "Essay 1": {"course": "US History", "status": "Not Started"},
+    "Math Review": {"course": "Precalculus", "status": "Not Started"},
+    "Cell Structure": {"course": "Biology", "status": "Not Started"},
+    "Chapter 3": {"course": "AP Computer Science", "status": "Not Started"},
+    "Midterm": {"course": "Government", "status": "Not Started"},
 }
 
-# 🧭 Aliases for natural language course names
-COURSE_ALIASES = {
-    "precalc": "Precalculus",
-    "math": "Precalculus",
-    "comp sci": "AP Computer Science",
-    "cs": "AP Computer Science",
-    "bio": "Biology",
-    "hist": "US History",
-    "history": "US History",
-    "english": "English Literature",
-    "lit": "English Literature",
-    "gov": "Government",
-    "econ": "Economics"
-}
-
-# 🧼 Strip leading phrases from course names
-def clean_course_name(raw):
-    return re.sub(r"^(the\s)?(class|course)\s+", "", raw.strip(), flags=re.IGNORECASE)
-
-# 📅 Parse fuzzy due dates
-def parse_due_date(raw):
-    parsed = dateparser.parse(raw)
-    return parsed.strftime("%Y-%m-%d") if parsed else None
-
-# 🗓️ Stub for calendar integration
-def create_calendar_event(name, due_date):
-    return "calendar-event-id"
-
-# 🆕 Create a new assignment in Notion
-def create_assignment(name, course_id, due_date=None, type_name=None):
-    calendar_event_id = create_calendar_event(name, due_date) if due_date else None
-
-    url = "https://api.notion.com/v1/pages"
-    properties = {
-        "Name": {
-            "title": [{
-                "type": "text",
-                "text": { "content": name }
-            }]
-        },
-        "Course": {
-            "relation": [{ "id": course_id }]
-        },
-        "Status": {
-            "status": { "name": "Not started" }
-        }
+# 🔧 Normalize course names
+def normalize_course_name(name):
+    name = name.lower().strip()
+    mapping = {
+        "bio": "Biology",
+        "us history": "US History",
+        "precalc": "Precalculus",
+        "comp sci": "AP Computer Science",
+        "gov": "Government",
     }
+    return mapping.get(name, name.title())
 
-    if calendar_event_id:
-        properties["Calendar events"] = {
-            "relation": [{ "id": calendar_event_id }]
-        }
+# 🔧 Fuzzy match course names
+def fuzzy_match_course(input_name, course_list):
+    normalized = normalize_course_name(input_name)
+    matches = get_close_matches(normalized.lower(), [c.lower() for c in course_list], n=1, cutoff=0.6)
+    return matches[0].title() if matches else None
 
-    if type_name:
-        properties["Type"] = {
-            "select": { "name": type_name }
-        }
+# 🔧 Clean assignment name
+def clean_name(raw):
+    return re.sub(r"^(an?|the)?\s*(assignment|quiz|test|project|hw|lab)?\s*(called)?\s*", "", raw.strip(), flags=re.IGNORECASE)
 
-    if due_date:
-        properties["Due date"] = {
-            "date": { "start": due_date }
-        }
+# 🔧 Parse due date
+def parse_due_date(text):
+    today = datetime.today()
+    text = text.lower().strip()
 
-    payload = {
-        "parent": { "database_id": DATABASE_ID },
-        "properties": properties
-    }
+    if "tomorrow" in text:
+        return (today + timedelta(days=1)).strftime("%Y-%m-%d")
+    if "next monday" in text:
+        days_ahead = (7 - today.weekday() + 0) % 7 or 7
+        return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+    if "friday" in text:
+        days_ahead = (4 - today.weekday()) % 7 or 7
+        return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+    if "in" in text and "days" in text:
+        match = re.search(r"in (\d+) days", text)
+        if match:
+            return (today + timedelta(days=int(match.group(1)))).strftime("%Y-%m-%d")
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except:
+        return None
 
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 200:
-        print(f"✅ Created assignment '{name}' successfully.")
-    else:
-        print(f"❌ Failed to create assignment: {response.text}")
-
-# ✍️ Update assignment properties
-def update_assignment(page_id, updates):
-    url = f"https://api.notion.com/v1/pages/{page_id}"
-    properties = {}
-
-    for key, value in updates.items():
-        if key == "Status":
-            properties[key] = { "status": { "name": value } }
-        elif key == "Pin":
-            properties[key] = { "checkbox": bool(value) }
-        elif key == "Due date":
-            properties[key] = { "date": { "start": value } }
-        else:
-            properties[key] = { "rich_text": [{ "text": { "content": str(value) } }] }
-
-    payload = { "properties": properties }
-    response = requests.patch(url, headers=headers, json=payload)
-    if response.status_code == 200:
-        print(f"✅ Updated assignment '{page_id}' successfully.")
-    else:
-        print(f"❌ Failed to update assignment: {response.text}")
-
-# 🧠 Parse natural language "add" command (fuzzy)
+# 🧠 Parse add command
 def parse_add_command(command):
-    match = re.search(r"(?:add|create|make).*?(?:assignment|quiz|test|project|hw|lab)?(?: called)? (.+?) (?:under|for|in|from|in the class|in course)? (.+?) (?:due|on|by) (.+)", command, re.IGNORECASE)
+    pattern = r"(?:add|create|make)\s+(?:an?|the)?\s*(assignment|quiz|test|project|hw|lab)?\s*(?:called)?\s*(.*?)\s+(?:for|in|on)?\s*(.*?)\s*(?:due\s+(.*))?"
+    match = re.search(pattern, command, re.IGNORECASE)
+
     if match:
-        raw_type = re.search(r"(assignment|quiz|test|project|hw|lab)", command, re.IGNORECASE)
-        type_guess = raw_type.group(1).capitalize() if raw_type else "Assignment"
-        return {
-            "Name": match.group(1).strip(),
-            "Course": clean_course_name(match.group(2).strip()),
-            "Due date": parse_due_date(match.group(3).strip()),
-            "Type": type_guess
+        raw_type = match.group(1) or "Assignment"
+        raw_name = match.group(2)
+        raw_course = match.group(3)
+        raw_due = match.group(4)
+
+        parsed = {
+            "Type": raw_type.title(),
+            "Name": clean_name(raw_name),
+            "Course": fuzzy_match_course(raw_course, notion_courses),
+            "Due date": parse_due_date(raw_due) if raw_due else None,
         }
 
-    # Fallback loose parser
-    fallback = re.search(r"(?:create|make|add)?\s*(?:an|a)?\s*(assignment|quiz|test|project|hw|lab)?\s*(?:called)?\s*(.+?)\s*(?:for|in|under)\s*(.+?)\s*(?:due|on|by)\s*(.+)", command, re.IGNORECASE)
-    if fallback:
-        type_guess = fallback.group(1) or "Assignment"
-        name = fallback.group(2)
-        course = clean_course_name(fallback.group(3))
-        due = parse_due_date(fallback.group(4))
-        return {
-            "Name": name.strip(),
-            "Course": course.strip(),
-            "Due date": due,
-            "Type": type_guess.capitalize()
-        }
+        print("🧠 Parsed Add Command:")
+        print(parsed)
+        print("Normalized course:", normalize_course_name(raw_course))
+        if not parsed["Course"]:
+            print(f"❌ Could not find course named '{raw_course}'")
+        return parsed
 
-    return {}
+    print("🤔 Sorry, I didn't understand that command. Try something like:")
+    print("- 'Add a quiz called Chapter 3 for bio due next Friday'")
+    print("- 'Make a test called Midterm for gov due in 3 days'")
+    return None
 
-# 🧠 Parse status update command (fuzzy)
+# 🧠 Parse status command
 def parse_status_command(command):
-    name_match = re.search(r"(?:mark|set|change|update)\s+(.+?)\s+(?:as|to)\s+(.+)", command, re.IGNORECASE)
-    if name_match:
-        return {
-            "Name": name_match.group(1).strip(),
-            "Status": name_match.group(2).strip().capitalize()
-        }
-    return { "Name": None, "Status": None }
+    pattern = r"(?:mark|set)\s+(.*?)\s+(?:as|to)\s+(done|completed|finished)"
+    match = re.search(pattern, command, re.IGNORECASE)
 
-# 🔎 Fuzzy match course name to Notion ID
-def find_course_id(course_name):
-    normalized = COURSE_ALIASES.get(course_name.lower(), course_name)
+    if match:
+        raw_name = match.group(1)
+        status = match.group(2).title()
 
-    url = f"https://api.notion.com/v1/databases/{DATABASE_ID}/query"
-    response = requests.post(url, headers=headers)
-    data = response.json()
+        cleaned_name = clean_name(raw_name)
+        matched = get_close_matches(cleaned_name.lower(), [k.lower() for k in notion_assignments.keys()], n=1, cutoff=0.6)
+        matched_name = matched[0] if matched else None
 
-    titles = {}
-    for result in data.get("results", []):
-        props = result["properties"]
-        title_prop = props.get("Name", {}).get("title", [])
-        if title_prop:
-            title = title_prop[0]["text"]["content"].strip()
-            titles[title] = result["id"]
-
-    closest = difflib.get_close_matches(normalized, titles.keys(), n=1, cutoff=0.4)
-    if closest:
-        matched_title = closest[0]
-        return titles[matched_title], matched_title
-
-    return None, None
-
-# 🔎 Fuzzy match assignment name to Notion ID
-def find_assignment_id_by_name(name):
-    url = f"https://api.notion.com/v1/databases/{DATABASE_ID}/query"
-    response = requests.post(url, headers=headers)
-    data = response.json()
-
-    titles = {}
-    for result in data.get("results", []):
-        props = result["properties"]
-        title = props["Name"]["title"][0]["text"]["content"].strip() if props["Name"]["title"] else ""
-        titles[title] = result["id"]
-
-    closest = difflib.get_close_matches(name, titles.keys(), n=1, cutoff=0.4)
-    if closest:
-        matched_title = closest[0]
-        return titles[matched_title], matched_title
-    return None, None
-
-# 🔍 Retrieve assignments with optional filters
-def get_assignments(filter_by=None, filter_value=None):
-    url = f"https://api.notion.com/v1/databases/{DATABASE_ID}/query"
-    payload = { "filter": {} }
-
-    if filter_by == "due-today":
-        today = datetime.today().strftime("%Y-%m-%d")
-        payload["filter"] = {
-            "property": "Due date",
-            "date": { "equals": today }
+        parsed = {
+            "Name": matched_name,
+            "Status": status,
         }
 
-    response = requests.post(url, headers=headers, json=payload)
-    return response.json()
+        print("🧠 Parsed Status Command:")
+        print(parsed)
+        if not matched_name:
+            print(f"❌ Could not find assignment named '{raw_name}'")
+        return parsed
 
-# 🧪 Debug utility
-def print_assignments():
-    data = get_assignments()
-    for result in data.get("results", []):
-        props = result["properties"]
-        name = props["Name"]["title"][0]["text"]["content"]
-        status = props["Status"]["status"]["name"]
-        due = props["Due date"]["date"]["start"] if props.get("Due date") else "No due date"
-        print(f"- {name} | {status} | Due: {due}")
+    print("🤔 Sorry, I didn't understand that command. Try something like:")
+    print("- 'Mark Essay 1 as completed'")
+    print("- 'Set Math Review to done'")
+    return None
+
+# ✅ Simulated update function
+def update_assignment_status(name, status):
+    if name in notion_assignments:
+        notion_assignments[name]["status"] = status
+        print(f"✅ Updated '{name}' to status '{status}'")
+    else:
+        print(f"❌ Assignment '{name}' not found")
+
+# ✅ Simulated add function
+def add_assignment(parsed):
+    if parsed["Course"] and parsed["Name"]:
+        print(f"✅ Added {parsed['Type']} '{parsed['Name']}' for course '{parsed['Course']}' due {parsed['Due date']}")
+    else:
+        print(f"❌ Failed to add assignment. Missing course or name.")
+
